@@ -42,33 +42,65 @@ I'm not sure that there is no rejects from patching :-(.
 Under Perl
 ~~~~~~~~~~
 
-You need the latest perl5.001m, and Tk-b8.
-Install 5.001m (or have it installed):
+You need a recent Perl (5.003+ ?) and latest Tk/Perl. To install Perl,
+get it from CPAN and
 
-	./Configure -des -D CC=my_compiler -D prefix=/path/to/my/location
+	./Configure -des -D CC=my_compiler -D prefix=/path/to/install/location
 	make
 	make test
 	make install
 
-Install Tk-b8 (or have it installed):
+Install Tk40*.* (or have it installed):
 
 	perl Makefile.PL
 	make
-	perl basic_example
+	perl -Mblib basic_example
 	make install
 
-Now you can compile eText:
+Now you can compile eText. There are two variants. Either you do it in
+independent directory:
 
-	cd ROOTDIR/eText
-	perl Makefile.PL
-
-If there is a link to Tk-b8 directory at a "reasonable" place, OK,
-Otherwise you get a message stating this, and you are asked to edit
-Makefile.PL to insert the location of Tk-b4.
-
+	cd ROOTDIR/etext/eText
+	perl -Mblib=/path/to/Tk-build-tree Makefile.PL
 	make
 	make test
 	make install
+
+(If you do not have Tk installed, you can run the test as
+
+	perl -Mblib=/path/to/Tk-build-tree -Mblib t/eText.t
+
+);
+
+or you move etext/eText directory to reside in the main Tk build tree,
+and rebuild Tk:
+
+	mv ROOTDIR/etext/eText ROOT_TK_DIR
+	cd ROOT_TK_DIR
+	perl Makefile.PL
+	make
+
+To test the extension do
+
+	perl -Mblib -I eText/utils eText/t/eText.t
+
+Now, when you install Tk by doing
+
+	make install
+
+eText will be installed as well.
+
+Currently you need to have Tk build tree around to build eText.
 
 make test gives you a window with some example. See README.etext and
 documentation in doc for key bindings.
+
+REMARK
+~~~~~~
+
+If you have an older Tk (before 401.000), you will see a warning like
+this: 
+
+"tkText.c", line 998: warning: argument #2 is incompatible with prototype:
+        prototype: pointer to function(pointer to void) returning void : "unknown", line 0
+        argument : pointer to function(pointer to char) returning void

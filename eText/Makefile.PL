@@ -1,55 +1,70 @@
 use ExtUtils::MakeMaker qw(&WriteMakefile);
 use Cwd;
 
-$Version = '0.52';
+$Version = '0.61';
+# The following guy should be defined if we are build inside Tk directory
 $Tk::MMutil::dir = cwd unless defined $Tk::MMutil::dir;
 
 my $dirTk;
 
 local $inc    = $::inc || "";
 $xlib   = $::xlib || "" if not defined $xlib;
+
 $dirTk = ".." if -r "../tkGlue.h";	# Check whether we are in the Tk tree.
-unless (defined $dirTk) {
-  # We are compiled standalone, try my machine locations:
-  #$dirTk = "H:/get/perl/Tk400.200" if -r "H:/get/perl/Tk400.200/tkGlue.h";
-  $dirTk = "H:/get/perl/Tk401.000.pm" if -r "H:/get/perl/Tk401.000.pm/tkGlue.h";
+
+#unless (defined $dirTk) {
+#  # We are compiled standalone, try my machine locations:
+#  #$dirTk = "H:/get/perl/Tk400.200" if -r "H:/get/perl/Tk400.200/tkGlue.h";
+#  $dirTk = "H:/get/perl/Tk401.000.pm" if -r "H:/get/perl/Tk401.000.pm/tkGlue.h";
+#}
+
+## If $dirTk is not defined, try to find it
+
+#unless (defined $dirTk) {
+#  if (-r "../Tk/tkGlue.h") {$dirTk = "../Tk";}
+#  elsif (-r "Tk/tkGlue.h") {$dirTk = "Tk" }
+#  elsif (-r "../../tkGlue.h") {$dirTk = "../.." }
+#  elsif (-r "../../Tk/tkGlue.h") {$dirTk = "../../Tk" }
+#  # Try harder
+#  elsif (@list = <../../Tk-*> and -d $list[-1]) {$dirTk = $list[-1] }
+#  elsif (@list = <../Tk-*> and -d $list[-1]) {$dirTk = $list[-1] }
+#  die "Please define \$dirTk in Makefile.PL, cannot find it automatically.\n"
+#    unless defined $dirTk;
+#}
+
+
+#print "Tk found in $dirTk.\n";
+
+#eval 'use lib $dirTk';
+
+require Tk::MMutil;
+
+require Tk::Config;		# Get the constants if standalone
+
+if (!defined $dirTk) {		# Not in the build tree
+  require Tk::Text;		# Find the location
+  
+  my $tktext = $INC{'Tk/Text.pm'};
+  print "tktext: `$tktext'\n";
+  $tktext =~ s|(blib/lib/)?Tk/Text\.pm||;
+  
+  die "Tk::Text not in Tk directory `$tktext'" unless -f "$ {tktext}tkGlue.h";
+  $dirTk = $tktext; # Communicate to the child
 }
 
-# If $dirTk is not defined, try to find it
-
-unless (defined $dirTk) {
-  if (-r "../Tk/tkGlue.h") {$dirTk = "../Tk";}
-  elsif (-r "Tk/tkGlue.h") {$dirTk = "Tk" }
-  elsif (-r "../../tkGlue.h") {$dirTk = "../.." }
-  elsif (-r "../../Tk/tkGlue.h") {$dirTk = "../../Tk" }
-  # Try harder
-  elsif (@list = <../../Tk-*> and -d $list[-1]) {$dirTk = $list[-1] }
-  elsif (@list = <../Tk-*> and -d $list[-1]) {$dirTk = $list[-1] }
-  die "Please define \$dirTk in Makefile.PL, cannot find it automatically.\n"
-    unless defined $dirTk;
-}
-
-{
+{				# Make the path absolute (for pTk subdir)
   my $d = cwd;
   chdir $dirTk or die "cannot chdir `$dirTk': $!";
   $dirTk = cwd;
   chdir $d or die "cannot chdir `$d': $!";
 }
 
-print "Tk found in $dirTk.\n";
-
 $common::dirTk = $dirTk;	# Communicate to the child
-
-eval 'use lib $dirTk';
-require Tk::MMutil;
-
-#$win_arch = 'open32';
-eval 'use Tk::Config';		# Get the constants if standalone
 
 local $Tk::MMutil::define = $Tk::MMutil::define;
 $Tk::MMutil::define .= " -DLangIsPerl";
 
-$newTk = $dirTk !~ /400/;
+$newTk = $Tk::Config::VERSION !~ /400/;
 $Tk::MMutil::define .= " -DNEW_TK" if $newTk;
 $mylibs = $newTk ? "" : "$xlib -lX11" ;
 $myinc = $::inc || $inc;
@@ -90,20 +105,23 @@ sub MY::postamble {
 Makefile     : $(TK_DIR)/myConfig 
 $(BASEEXT)$(OBJ_EXT) : $(MYEXTLIB)
 
-$(MYEXTLIB)  : FORCE
-	cd $(eText_DIR); $(MAKE) libpTkeText$(LIB_EXT)
+# Hack to make eText.pm:
+$(MYEXTLIB)  : FORCE $(INST_LIB)/eText.pm
+	cd $(eText_DIR); $(MAKE) libpTkeText$(LIB_EXT) $(PASTHRU)
 
 #$(eText_DIR)/Makefile : $(eText_DIR)/Makefile.PL
 #	cd $(eText_DIR); $(PERL) Makefile.PL
 
 eText.xs : $(TK_DIR)/Text/Text.xs
-	cp $(TK_DIR)/Text/Text.xs $@
-	perl -pi~ -e "s/([^_])Text/\1eText/g;" -e "s/\"text/\"etext/g" $@
+	$(CP) $(TK_DIR)/Text/Text.xs $@
+	$(PERL) -pi~ -e "s/([^_])Text/\1eText/g;" -e "s/\"text/\"etext/g" $@
 
 eText.pm : $(TK_DIR)/Text/Text.pm cnvrt eText.xs
-	cp $(TK_DIR)/Text/Text.pm $@
-	perl -pi~ cnvrt $@
+	$(CP) $(TK_DIR)/Text/Text.pm $@
+	$(PERL) -pi~ cnvrt $@
 
+$(INST_LIB)/eText.pm: eText.pm
+	$(CP) eText.pm $@
 ';
 }
 
