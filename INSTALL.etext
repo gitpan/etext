@@ -1,0 +1,74 @@
+Under construction.
+
+There are 3 different possibilities: compilation with TCL in tk
+directory, in separate directory and with Perl.
+
+Under TCL in tk directory
+~~~~~~~~~~~~~~~~~~~~~~~~~
+You can just replace the standard tkText* files with the
+supplied, and link wish with one additional file ptclGlue.o.
+
+For this copy all C files (*.c *.h) from the root directory of
+distribution into tk directory and add ptclGlue.o to the list TEXTOBJS
+in the Makefile.
+
+	make 
+	./wish ROOTDIR/demo/etext.tcl
+
+will give you a sample window into which you can type some minimal
+math. See documentation in etext/doc.
+
+Under TCL in separate directory
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+If you want to live in a separate directory, make sure that the links
+tk and tcl in this directory are OK, and essentially do
+
+	cp Makefile.etext Makefile
+	make
+	./wish demo/etext.tcl
+
+(See README.etext for keybindings).
+
+Unfortunately the supplied Makefile is not autoconf'ed, so probably
+you need to 
+
+	cp tk/Makefile Makefile
+	patch <Makefile.diff
+	make
+	./wish demo/etext.tcl
+
+I'm not sure that there is no rejects from patching :-(.
+
+Under Perl
+~~~~~~~~~~
+
+You need the latest perl5.001m, and Tk-b8.
+Install 5.001m (or have it installed):
+
+	./Configure -des -D CC=my_compiler -D prefix=/path/to/my/location
+	make
+	make test
+	make install
+
+Install Tk-b8 (or have it installed):
+
+	perl Makefile.PL
+	make
+	perl basic_example
+	make install
+
+Now you can compile eText:
+
+	cd ROOTDIR/eText
+	perl Makefile.PL
+
+If there is a link to Tk-b8 directory at a "reasonable" place, OK,
+Otherwise you get a message stating this, and you are asked to edit
+Makefile.PL to insert the location of Tk-b4.
+
+	make
+	make test
+	make install
+
+make test gives you a window with some example. See README.etext and
+documentation in doc for key bindings.
