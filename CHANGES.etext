@@ -64,3 +64,7 @@ Methods.def manually created.
 
 0.6.2:
 	Should work inside Tk directory too.
+
+1.6.3:
+	Method 'rename' added.
+	Converter to LaTeX handles mathcal, mathfrak and mathbb.

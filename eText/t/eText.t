@@ -62,13 +62,23 @@ my $equationSeparators = { '\\\\' => 1 };
 
 %char_by_char = qw( symbol 1 cmsy 1 cmex 1 msam 1 msbm 1 frak 1 );
 
+my @msbm = @Text::TeX::msbm;
+my @cmsy = @Text::TeX::cmsy;
+my @frak;
+
 %by_table = ( symbol => \@Text::TeX::symbol,
-	      cmsy => \@Text::TeX::cmsy,
+	      cmsy => \@cmsy,
 	      cmex => \@Text::TeX::cmex,
 	      msam => \@Text::TeX::msam,
-	      msbm => \@Text::TeX::msbm,
-	      frak => \@Text::TeX::frak,
+	      msbm => \@msbm,
+	      frak => \@frak,
 	    );
+foreach ('A' .. 'Z') {
+  $msbm[ord $_] = "{\\mathbb $_}";	# \\Bbb ?
+  $cmsy[ord $_] = "{\\mathcal $_}";	# \\cal ?
+  $frak[ord $_] = "{\\mathfrak $_}";	# \\frak ?
+  $frak[ord lc $_] = "{\\mathfrak \l$_}";	# \\frak ?
+}
 
 #TeX::initgreek;
 
@@ -96,7 +106,6 @@ eval 'use Devel::Peek'; warn $@ if $@ and $ENV{ETEXT_DB};
 # use strict;
 
 $dumpvar::compactDump = 160;
-$prefix = $ENV{kprefix} || $^O eq 'os2' ? "Control-Alt-" : "Control-Meta-";
 
 my $not_X;
 my $server;
@@ -105,10 +114,15 @@ $initialized || do {
   $top = MainWindow->new;
   $not_X = $^O eq 'os2' && ($server = $top->winfo('server')) =~ /win32|os\/2/i;
 print "server: `$server', not_X: `$not_X'\n";  
+$prefix = $ENV{kprefix} || ($^O eq 'os2' 
+			    ? ($server =~ /os\/2/i 
+			       ? "Control-Alt-"
+			       : "Control-Alt-")
+			    : "Control-Meta-");
 
   #Tk::Widget::EnterWidgetMethod("Text","block");
   
-  my $mb  = $top->Menubar;
+  my $mb  = $top->Menubar; #(-bindto => 'Tk::Text');
   
   require Tk::FileSelect;
   my $fs  = $top->Component(FileSelect => 'fs', -width => 25, -height => 8,
@@ -169,7 +183,7 @@ print "server: `$server', not_X: `$not_X'\n";
 	       -command => [ $text, 'debug', 'yes'] );
   $mb->command(-button => 'File', 
 	       -label => 'To TeX', -underline => 0,
-	       -accelerator => "<${prefix}l>",
+	       -accelerator => "<${prefix}w>",
 	       -command => sub {print ($text->range2TeX, "\n")});
   $mb->command(-button => 'File', -label => 'Quit', -underline => 0, 
 	       -accelerator => "<${prefix}q>",
@@ -181,14 +195,14 @@ print "server: `$server', not_X: `$not_X'\n";
 		 my @sel = $text->tag('nextrange', 'sel', '0.0');
 		 undef $sel;
 		 $sel = $text->block('list', @sel) if @sel;
-		 ::dumpValue($sel);
+		 #::dumpValue($sel);
 	       });
   $mb->command(-button => ['Edit', underline => 0],
 	       -label => 'Int Paste', -underline => 4, 
 	       -command => sub {
 		 return unless $sel;
 		 for $piece (@$sel) {
-		   ::dumpValue $piece;
+		   #::dumpValue $piece;
 		   $piece->insertSelf($text, 'insert');
 		 }
 	       });
@@ -410,7 +424,7 @@ $top->title('Extended Text Demonstration');
 
 #$text->pack(-side => 'bottom', -expand => 'yes', -fill => 'both');
 
-$text->debug("yes");
+# $text->debug("yes");
 
 # Initialize the mark stack
 $text->{tags} = {};		# We keep indices of starts of tags in progress here.
@@ -506,6 +520,8 @@ $text->bind("<${prefix}BackSpace>",
 $text->bind( "<${prefix}l>",
 	    sub {dumpVar ($text->listRange); $text->break});
 $text->bind( "<${prefix}w>",
+	    sub {print ($text->range2TeX, "\n"); $text->break});
+$text->bind( "<${prefix}W>",
 	    sub {$text->window( 'create', 'insert', -window => $testbutton);
 	         $text->break});
 
@@ -746,6 +762,14 @@ sub myLoop {
 my $stdWidth = 10;
 my $elth = 18;
 my $eqGap = 15;
+
+my $stime = times;
+$do_update = 1;
+
+$text->readTeX;
+
+$stime = times - $stime;
+print "Time in readTeX: $stime.\n";
 
 $inmainloop++ || myLoop;	# To allow reloading
 
@@ -1541,6 +1565,11 @@ sub LR2TeX {
   my @out = flashTags($state);
   $state->{atBeg} = 1;
   push @out, '\left' . $l;
+  if ($out[-1] =~ /\\[a-zA-Z]+\s*$/) {
+    $state->{need_space} = 1;
+  } else {
+    $state->{need_space} = 0;
+  }
   push @ {$state->{level0}}, 0;
   push @ {$state->{blocks}}, 0;
   push @ {$state->{depths}}, $depthSub;
@@ -1564,37 +1593,6 @@ sub LR2TeX {
   @out;
 }
 
-sub Eq2TeX {
-  my $self = shift;
-  my $state = shift;
-  my $sep = 1;
-  ++$sep until $sep > $#$self or ref $self[$sep] eq 'Tk::Text::BlockSeparator';
-  undef $sep if $sep > $#$self;
-  my @out = flashTags($state);
-  $state->{atBeg} = 1;
-  push @out, '\left' . $l;
-  push @ {$state->{level0}}, 0;
-  push @ {$state->{blocks}}, 0;
-  push @ {$state->{depths}}, $depthSub;
-  push @{ $state->{tags} }, $state->{tags}[-1];
-  push @{ $state->{tags_inserted} }, 0;
-  push @out, map $_->insertSelfTeX($state), @$self[1 .. $#$self];
-  push @out, flashTags($state);
-  push @out, '\right' . $r;
-  pop @{ $state->{tags} };
-  pop @{ $state->{tags_inserted} };
-  pop @ {$state->{blocks}};
-  pop @ {$state->{depths}};
-  pop @ {$state->{level0}};
-  # pop @ {$state->{level1}};
-  if ($out[-1] =~ /\\[a-zA-Z]+\s*$/) {
-    $state->{need_space} = 1;
-  } else {
-    $state->{need_space} = 0;
-  }
-  $state->{atBeg} = 0;
-  @out;
-}
 
 sub Tk::Text::BlockSeparator::insertSelfTeX {
   my ($self, $state) = (shift, shift);
@@ -1805,7 +1803,7 @@ sub Tk::eText::TeXinsert {
       }
     } elsif (ref $eaten eq 'Text::TeX::Paragraph') {
       $text->insert('TeXinsert', "\n", $text->{activetags});
-      $text->update;
+      $text->update if $do_update;
     } elsif (ref $eaten eq 'Text::TeX::Begin::Group' and $eaten->[0] eq "\$") {
       #push @{$text->{indices}}, $text->index('TeXinsert');
       #push @{$text->{indexinfo}}, $eaten;
@@ -1938,12 +1936,13 @@ sub getString {
 
     my $w_t = $w->ScrleText(-setgrid => 'true')->pack(-expand => 'yes', -fill => 'both');
     my $sub = sub {$w->withdraw; 
-		   $txt->TeX_insert('insert', $w_t->get('0.0','end'))};
+		   $txt->TeX_insert('insert', $w_t->get('0.0','end'));
+		   $txt->focus};
     $w_t->bind('<Control-Return>', $sub);
     my $w_ok = $w->Button(-text => 'OK', 
 			  -width => 8, 
 			  -command => $sub,
-			 )->pack(-side => 'bottom');
+			 )->pack(-side => 'bottom')->focus;
 
   }
   $popupString->deiconify;

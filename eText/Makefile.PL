@@ -1,85 +1,27 @@
-use ExtUtils::MakeMaker qw(&WriteMakefile);
-use Cwd;
-
-$Version = '0.61';
-# The following guy should be defined if we are build inside Tk directory
-$Tk::MMutil::dir = cwd unless defined $Tk::MMutil::dir;
-
-my $dirTk;
-
-local $inc    = $::inc || "";
-$xlib   = $::xlib || "" if not defined $xlib;
-
-$dirTk = ".." if -r "../tkGlue.h";	# Check whether we are in the Tk tree.
-
-#unless (defined $dirTk) {
-#  # We are compiled standalone, try my machine locations:
-#  #$dirTk = "H:/get/perl/Tk400.200" if -r "H:/get/perl/Tk400.200/tkGlue.h";
-#  $dirTk = "H:/get/perl/Tk401.000.pm" if -r "H:/get/perl/Tk401.000.pm/tkGlue.h";
-#}
-
-## If $dirTk is not defined, try to find it
-
-#unless (defined $dirTk) {
-#  if (-r "../Tk/tkGlue.h") {$dirTk = "../Tk";}
-#  elsif (-r "Tk/tkGlue.h") {$dirTk = "Tk" }
-#  elsif (-r "../../tkGlue.h") {$dirTk = "../.." }
-#  elsif (-r "../../Tk/tkGlue.h") {$dirTk = "../../Tk" }
-#  # Try harder
-#  elsif (@list = <../../Tk-*> and -d $list[-1]) {$dirTk = $list[-1] }
-#  elsif (@list = <../Tk-*> and -d $list[-1]) {$dirTk = $list[-1] }
-#  die "Please define \$dirTk in Makefile.PL, cannot find it automatically.\n"
-#    unless defined $dirTk;
-#}
+use strict;
+use Tk::MMutil;
+use Tk::Config;
 
 
-#print "Tk found in $dirTk.\n";
-
-#eval 'use lib $dirTk';
-
-require Tk::MMutil;
-
-require Tk::Config;		# Get the constants if standalone
-
-if (!defined $dirTk) {		# Not in the build tree
-  require Tk::Text;		# Find the location
-  
-  my $tktext = $INC{'Tk/Text.pm'};
-  print "tktext: `$tktext'\n";
-  $tktext =~ s|(blib/lib/)?Tk/Text\.pm||;
-  
-  die "Tk::Text not in Tk directory `$tktext'" unless -f "$ {tktext}tkGlue.h";
-  $dirTk = $tktext; # Communicate to the child
-}
-
-{				# Make the path absolute (for pTk subdir)
-  my $d = cwd;
-  chdir $dirTk or die "cannot chdir `$dirTk': $!";
-  $dirTk = cwd;
-  chdir $d or die "cannot chdir `$d': $!";
-}
-
-$common::dirTk = $dirTk;	# Communicate to the child
 
 local $Tk::MMutil::define = $Tk::MMutil::define;
 $Tk::MMutil::define .= " -DLangIsPerl";
 
-$newTk = $Tk::Config::VERSION !~ /400/;
-$Tk::MMutil::define .= " -DNEW_TK" if $newTk;
-$mylibs = $newTk ? "" : "$xlib -lX11" ;
-$myinc = $::inc || $inc;
+local $::inc    = $::inc || "";
+local $::xlib   = $::xlib || "";
 
-$direText = "pTk";
-$gccopt = $::gccopt if $::gccopt;
+my $newTk = $Tk::Config::VERSION !~ /400/;
+$Tk::MMutil::define .= " -DNEW_TK" if $newTk;
+my $mylibs = $newTk ? "" : "$::xlib -lX11" ;
+
+local $::gccopt = $::gccopt if $::gccopt;
 
 Tk::MMutil::TkExtMakefile(
-    NAME     => 'Tk::eText',
-    VERSION  => $Version,
-    MYEXTLIB => "$direText/libpTkeText\$(LIB_EXT)",
-    LIBS    => [ $mylibs ],
-    INC     => "-I$dirTk/pTk $myinc -I$dirTk/pTk/mTk/Xlib $gccopt",
-    OBJECT      => 'eText$(OBJ_EXT)',
-);
+			  'dynamic_ptk' => 1,
+			  MYEXTLIB => "$direText/libpTkeText\$(LIB_EXT)",
+			  LIBS    => [ $mylibs ],
+			  INC     => "-I$dirTk/pTk $::inc -I$dirTk/pTk/mTk/Xlib $::gccopt",
+      );
 
 
 sub MY::constants {

@@ -545,6 +545,10 @@ prohibited for I<empty> blocks.
 
 Returns list of names of currently defined I<block types>.
 
+=item B<rename> I<index name>
+
+Change the name of the block containing position I<index> to be I<name>.
+
 =item B<split> I<index ?level?>
 
 =over 5

@@ -22,6 +22,7 @@ etext/doc/etext.html
 etext/doc/etext.man
 etext/doc/etext.pod
 etext/eText/Makefile.PL
+etext/eText/Makefile.PL.old
 etext/eText/cnvrt
 etext/eText/save.tsf
 etext/eText/t/eText.t

@@ -1,4 +1,5 @@
 package Text::TeX;
+BEGIN { require 5.004 }		# //c
 
 #use strict;
 #use vars qw($VERSION @ISA @EXPORT);
@@ -257,7 +258,10 @@ for (qw(Text::TeX::ArgToken Text::TeX::BegArgsToken Text::TeX::EndArgsToken )) {
   sub paragraph {
     my $in = shift;
     #print "ep.in=$in\n";
-    if ($in->{"paragraph"} and $ {$in->{"paragraph"}} ne "") {
+    if ($in->{"paragraph"} 
+	# and $ {$in->{"paragraph"}} ne ""
+	and pos $ {$in->{"paragraph"}} ne length $ {$in->{"paragraph"}}
+       ) {
       $in->{"paragraph"};
     } elsif (@{$in->{fhs}} and eof($ {$in->{fhs}}[-1])) {
       undef;
@@ -266,6 +270,7 @@ for (qw(Text::TeX::ArgToken Text::TeX::BegArgsToken Text::TeX::EndArgsToken )) {
     } else {
       #warn "getting new\n";
       $in->{"paragraph"} = new Text::TeX::GetParagraph $in;
+      pos $in->{"paragraph"} = 0;
       return "";
     }
   }
@@ -348,8 +353,8 @@ for (qw(Text::TeX::ArgToken Text::TeX::BegArgsToken Text::TeX::EndArgsToken )) {
   sub eatOptionalArgument {
     my $in = shift->paragraph;
     return undef unless defined $in;
-    my $comment = ( $$in =~ s/^\s*($Text::TeX::commentpattern)//o );
-    if ($$in =~ s/^\s*$Text::TeX::optionalArgument//o) {
+    my $comment = ( $$in =~ /\G\s*($Text::TeX::commentpattern)/ogc );
+    if ($$in =~ /\G\s*$Text::TeX::optionalArgument/ogc) {
       new Text::TeX::Token $1, $comment;
     } else {
       warn "No optional argument found";
@@ -362,8 +367,9 @@ for (qw(Text::TeX::ArgToken Text::TeX::BegArgsToken Text::TeX::EndArgsToken )) {
     my $in = shift->paragraph;
     return undef unless defined $in;
     my $str = shift;
-    my ($comment) = ( $$in =~ s/^\s*($Text::TeX::commentpattern)//o );
-    if ($$in =~ s/^\s*$str//) {new Text::TeX::Token $&, $comment}
+    my $comment;
+    $comment = $1 if $$in =~ /\G\s*($Text::TeX::commentpattern)/ogc ;
+    if ($$in =~ /\G(\s*$str)/ogc) {new Text::TeX::Token $1, $comment}
     else {
       warn "String `$str' expected, not found";
       if ($comment) {new Text::TeX::Token undef, $comment}
@@ -438,7 +444,7 @@ for (qw(Text::TeX::ArgToken Text::TeX::BegArgsToken Text::TeX::EndArgsToken )) {
     return '' unless $in;	# To be able to match without warnings
     my $comment = undef;
     if ($$in =~ 
-	/^(?:\s*)(?:$Text::TeX::commentpattern)?($Text::TeX::tokenpattern)/o) {
+	/\G(?=(?:\s*)(?:$Text::TeX::commentpattern)?($Text::TeX::tokenpattern))/ogc) {
       if (defined $2) {return $1}
       elsif (defined $3) {return "\\$3"} # Multiletter
       elsif (defined $1) {return $1}
@@ -452,11 +458,15 @@ for (qw(Text::TeX::ArgToken Text::TeX::BegArgsToken Text::TeX::EndArgsToken )) {
     return undef unless defined $in;
     return new Text::TeX::Paragraph unless $in;
     my $comment = undef;
-    $comment = $2 if $$in =~ s/^(\s*)($Text::TeX::commentpattern)/$1/o;
+    if ($$in =~ /\G(\s*)($Text::TeX::commentpattern)/ogc) {
+      # Need to be rethough...
+      $$in = $1 . substr($$in, pos $$in);
+      $comment = $2;
+    }
     my $nomulti = shift;
     # Cannot use if () BLOCK, because $& is local.
-    $got = $$in =~ s/^\s*($Text::TeX::tokenpattern)//o	if $nomulti;
-    $got = $$in =~ s/^\s*($Text::TeX::multitokenpattern)//o	unless $nomulti;
+    $got = $$in =~ /\G\s*($Text::TeX::tokenpattern)/ogc	     if $nomulti;
+    $got = $$in =~ /\G\s*($Text::TeX::multitokenpattern)/ogc unless $nomulti;
     if ($got and defined $2) {new Text::TeX::Text $&, $comment}
     elsif ($got and defined $3) {new Text::TeX::Token "\\$3", $comment} # Multiletter
     elsif ($got and defined $1) {new Text::TeX::Token $1, $comment}
@@ -464,15 +474,36 @@ for (qw(Text::TeX::ArgToken Text::TeX::BegArgsToken Text::TeX::EndArgsToken )) {
     else {undef}
   }
 
+  sub eat_pending {
+    my $txt = shift;
+    my $out = pop @{ $txt->{pending_out} };
+    if (ref $out eq 'Text::TeX::LookAhead') {
+      my $in = $txt->lookAheadToken;
+      my $res;
+      if (defined ($res = $out->[0][2]{$in})) {
+	push @{$out->[0]}, $in, $res;
+	$in = $txt->eatMultiToken(1); # XXXX may be wrong if next
+				      # token needs to be eaten in
+				      # the style `multi', like \left.
+	splice @{ $txt->{pending_in} }, 
+	0, 0, (bless \$in, 'Text::TeX::LookedAhead');
+	# Fall through
+      } else {
+	return bless $out, 'Text::TeX::EndArgsToken';
+      }
+    }
+    return $out;
+  }
+
   sub eat {
     my $txt = shift;
     if ( @{ $txt->{pending_out} } ) {
+      return eat_pending($txt);
+      
       my $out = pop @{ $txt->{pending_out} };
       if (ref $out eq 'Text::TeX::LookAhead') {
 	my $in = $txt->lookAheadToken;
-	#my $in = $txt->eatMultiToken(1);
-	#push @{ $txt->{pending_in} }, $in;
-	#$in = $in->[0];
+	my $res;
 	if (defined ($res = $out->[0][2]{$in})) {
 	  push @{$out->[0]}, $in, $res;
 	  $in = $txt->eatMultiToken(1);	# XXXX may be wrong if next
@@ -507,17 +538,11 @@ for (qw(Text::TeX::ArgToken Text::TeX::BegArgsToken Text::TeX::EndArgsToken )) {
       unless defined $in && defined $in->[0] 
 	&& $in->[0] =~ /$Text::TeX::active/o
 	&& defined ( $Token = $txt->{tokens}->{$in->[0]} );
-    $type = $Token->{Type} or return $in;
+    $type = $Token->{PostProcess} or return $in;
     my $out = $in;
-    if ($type eq 'action') {
-      return &{$Token->{sub}}($in);
-    } elsif ($type eq 'argmask') {
-      # eatWithMask;		# ????
-    } elsif ($type eq 'args') {
-      # Args eaten already
-    } elsif ($type eq 'local') {
+    if ($type eq 'local') {
       $txt->addpresynthetic(new Text::TeX::EndLocal $in);
-    } elsif ($type eq 'report_args') {
+    } elsif ($type eq 'delimit_args') {
       my $count = $Token->{count};
       my $ordinal = $count;
       my $res;
@@ -534,7 +559,13 @@ for (qw(Text::TeX::ArgToken Text::TeX::BegArgsToken Text::TeX::EndArgsToken )) {
       } else {
 	$out = new Text::TeX::BegArgsToken [$in, $count];
       }
-    } else {
+    } elsif ($type eq 'action') {
+      return &{$Token->{sub}}($in);
+    } elsif ($type eq 'argmask') {
+      # eatWithMask;		# ????
+    } elsif ($type eq 'args') {
+      # Args eaten already
+    }  else {
       warn "Format of token data unknown for `", $in->[0], "'"; 
     }
     return $out;
@@ -576,7 +607,7 @@ for (qw(Text::TeX::ArgToken Text::TeX::BegArgsToken Text::TeX::EndArgsToken )) {
 
 %super_sub_lookahead = qw( ^ 1 _ 0 \\sb 0 \\sp 1 \\Sp 1 \\Sb 0 );
 
-# class => 'where to bless to', Type => how to process
+# class => 'where to bless to', PostProcess => how to process
 # eatargs => how many args to swallow before digesting
 
 %Tokens = (
@@ -590,22 +621,22 @@ for (qw(Text::TeX::ArgToken Text::TeX::BegArgsToken Text::TeX::EndArgsToken )) {
   '\left' => {class => 'Text::TeX::Begin::Group::Args', 
 	       eatargs => 1, 'waitfor' => '\right'},
   '\right' => {class => 'Text::TeX::End::Group::Args', eatargs => 1},
-  '\frac' => {Type => 'report_args', count => 2},
-  '\sqrt' => {Type => 'report_args', count => 1},
-  '\text' => {Type => 'report_args', count => 1},
-  '\operatorname' => {Type => 'report_args', count => 1},
-  '\operatornamewithlimits' => {Type => 'report_args', count => 1},
-  '^' => {Type => 'report_args', count => 1, 
+  '\frac' => {PostProcess => 'delimit_args', count => 2},
+  '\sqrt' => {PostProcess => 'delimit_args', count => 1},
+  '\text' => {PostProcess => 'delimit_args', count => 1},
+  '\operatorname' => {PostProcess => 'delimit_args', count => 1},
+  '\operatornamewithlimits' => {PostProcess => 'delimit_args', count => 1},
+  '^' => {PostProcess => 'delimit_args', count => 1, 
 	  lookahead => \%super_sub_lookahead },
-  '_' => {Type => 'report_args', count => 1, 
+  '_' => {PostProcess => 'delimit_args', count => 1, 
 	  lookahead => \%super_sub_lookahead },
-  '\em' => {Type => 'local'},
-  '\bold' => {Type => 'local'},
-  '\it' => {Type => 'local'},
-  '\rm' => {Type => 'local'},
-  '\mathcal' => {Type => 'local'},
-  '\mathfrak' => {Type => 'local'},
-  '\mathbb' => {Type => 'local'},
+  '\em' => {PostProcess => 'local'},
+  '\bold' => {PostProcess => 'local'},
+  '\it' => {PostProcess => 'local'},
+  '\rm' => {PostProcess => 'local'},
+  '\mathcal' => {PostProcess => 'local'},
+  '\mathfrak' => {PostProcess => 'local'},
+  '\mathbb' => {PostProcess => 'local'},
   '\\\\' => {'class' => 'Text::TeX::Separator'},
   '&' => {'class' => 'Text::TeX::Separator'},
 );
@@ -857,7 +888,17 @@ This should not be of any concern if the stream in question is a
 =head2 Digester
 
 The processed C<input tokens> are handled to the digester, which
-handles them according to the provided C<tokens> attribute.
+handles them according to the provided C<tokens> attribute.  A
+sequence of C<input tokens> is converted into C<output tokens>.  To
+each C<input token> there corresponds 0 or more C<output tokens>.  The
+C<output tokens> are delivered one-by-one to the C<action> handler of
+the processor.
+
+C<Output token> is a reference to an object (which is usually an array
+reference).  Some elements of the array have a special meaning to the
+Digester.  The first one is the substring of the input which generated
+this C<token>.  The second contains comment which preceeded this
+substring, or C<undef>.
 
 =head2 C<tokens> attribute
 
@@ -873,16 +914,16 @@ following keys recognized:
 Into which class to bless the token. Several predefined classes are
 provided. The default is C<Text::TeX::Token>.
 
-=item Type
+=item PostProcess
 
 What kind of special processing to do with the input after the
-C<class> methods are called. Recognized C<Type>s are:
+C<class> methods are called. Recognized C<PostProcess>s are:
 
 =over 10
 
-=item report_args
+=item delimit_args
 
-When the token of this C<Type> is encountered, it is converted into
+When the token of this C<PostProcess> is encountered, it is converted into
 C<Text::Tex::BegArgsToken>. Then the arguments are processed as usual,
 and an C<output token> of type C<Text::Tex::ArgToken> is inserted
 between them. Finally, after all the arguments are processed, an
@@ -895,7 +936,8 @@ array is the number of arguments required by the C<input token>. The
 C<Text::Tex::ArgToken> token has a third element, which is the ordinal
 of the argument which ends immediately before this token.
 
-If requested, a token C<Text::Tex::LookAhead> may be returned instead
+If C<lookahead> attribute is present, a token 
+C<Text::Tex::LookAhead> will be returned instead
 of C<Text::Tex::EndArgsToken>. The additional elements of
 C<$token->[0]> are: the reference to the corresponding C<lookahead>
 attribute, the relevant key (text of following token) and the
@@ -907,10 +949,10 @@ usually generates C<Text::Tex::BegArgsToken>).
 
 =item local
 
-Means that these macro introduces a local change, which should be
+Used if this macro introduces a local change, which should be
 undone at the end of enclosing block. At the end of the block an
-output event C<Text::TeX::EndLocal> is delivered, with C<$token->[0]>
-being the output token for the I<local> event starting.
+output token C<Text::TeX::EndLocal> is delivered, with C<$token->[0]>
+being the output token which started the I<local> event.
 
 Useful for font switching. 
 

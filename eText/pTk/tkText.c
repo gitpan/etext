@@ -2390,6 +2390,35 @@ TkTextBlockCmd(textPtr, interp, argc, args)
 			      textPtr->getFlags | TKT_GET_LIST, NULL);
 	ListFactoryResult(textPtr->interp, &listFactory);
 	ListFactoryFree(&listFactory);
+    } else if ((c == 'r') && (strncmp(LangString(args[2]), "rename", length) == 0)) {
+	TkTextSegment *segPtr;
+
+	if (argc != 5) {
+	    Tcl_AppendResult(interp, "wrong # args: should be \"",
+		    LangString(args[0]), " block rename index newtype\"",          NULL);
+	    return TCL_ERROR;
+	}
+        if (TkTextGetIndex(interp, textPtr, LangString(args[3]), &index1) != TCL_OK) {
+	  return TCL_ERROR;
+	}
+	segPtr = TkIBTreeAt(&index1,1);
+
+	if (!segPtr) {
+	    Tcl_AppendResult(interp, "no block at \"",
+			     LangString(args[3]), "\"",          NULL);
+	    return TCL_ERROR;
+	}
+	hPtr = Tcl_FindHashEntry(&textPtr->blockTable, LangString(args[4]));
+	if (hPtr == NULL) {
+	    Tcl_AppendResult(interp, "there is no block named \"",
+		    LangString(args[4]), "\"",          NULL);
+	    return TCL_ERROR;
+	}
+	blockPtr = (TkTextBlock *) Tcl_GetHashValue(hPtr);
+
+	segPtr->body.itree.blockPtr->count--;
+	blockPtr->count++;
+	segPtr->body.itree.blockPtr = blockPtr;
     } else if ((c == 's') && (strncmp(LangString(args[2]), "split", length) == 0)) {
         int level = 0;
 	char *end;
@@ -2410,7 +2439,7 @@ TkTextBlockCmd(textPtr, interp, argc, args)
     } else {
 	Tcl_AppendResult(interp, "bad block option \"", LangString(args[2]),
 		"\":  must be at, addline, cget, configure, delete, ",
-		"deletelines, insert, list, names, of, split or trim",
+		"deletelines, insert, list, names, of, rename, split or trim",
 		         NULL);
 	return TCL_ERROR;
     }

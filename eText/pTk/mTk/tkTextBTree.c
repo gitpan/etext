@@ -1717,7 +1717,7 @@ TkBTreeTag(index1Ptr, index2Ptr, tagPtr, add)
 {
     TkTextSegment *segPtr;
     TkTextSearch search;
-    TkTextLine *cleanupLinePtr;
+    TkTextLine *cleanupLinePtr = NULL;
     int oldState;
     int changed;
     register TkTextSegment *prevPtr;
@@ -1739,6 +1739,7 @@ TkBTreeTag(index1Ptr, index2Ptr, tagPtr, add)
 	segPtr = (TkTextSegment *) ckalloc(TSEG_SIZE);
 	segPtr->typePtr = (add) ? &tkTextToggleOnType : &tkTextToggleOffType;
 	pSegment = SplitSeg(index1Ptr);
+	cleanupLinePtr = pSegment.linePtr;
 	prevPtr = pSegment.segPtr;
 	segPtr->nextPtr = prevPtr->nextPtr;
 	prevPtr->nextPtr = segPtr;
@@ -1758,7 +1759,8 @@ TkBTreeTag(index1Ptr, index2Ptr, tagPtr, add)
      */
 
     TkBTreeStartSearch(index1Ptr, index2Ptr, tagPtr, &search);
-    cleanupLinePtr = search.curIndex.linePtr;
+    if (!cleanupLinePtr)
+	cleanupLinePtr = search.curIndex.linePtr;
     while (TkBTreeNextTag(&search)) {
 	oldState ^= 1;
 	segPtr = search.segPtr;
