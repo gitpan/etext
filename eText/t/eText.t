@@ -1564,6 +1564,37 @@ sub LR2TeX {
   @out;
 }
 
+sub Eq2TeX {
+  my $self = shift;
+  my $state = shift;
+  my $sep = 1;
+  ++$sep until $sep > $#$self or ref $self[$sep] eq 'Tk::Text::BlockSeparator';
+  undef $sep if $sep > $#$self;
+  my @out = flashTags($state);
+  $state->{atBeg} = 1;
+  push @out, '\left' . $l;
+  push @ {$state->{level0}}, 0;
+  push @ {$state->{blocks}}, 0;
+  push @ {$state->{depths}}, $depthSub;
+  push @{ $state->{tags} }, $state->{tags}[-1];
+  push @{ $state->{tags_inserted} }, 0;
+  push @out, map $_->insertSelfTeX($state), @$self[1 .. $#$self];
+  push @out, flashTags($state);
+  push @out, '\right' . $r;
+  pop @{ $state->{tags} };
+  pop @{ $state->{tags_inserted} };
+  pop @ {$state->{blocks}};
+  pop @ {$state->{depths}};
+  pop @ {$state->{level0}};
+  # pop @ {$state->{level1}};
+  if ($out[-1] =~ /\\[a-zA-Z]+\s*$/) {
+    $state->{need_space} = 1;
+  } else {
+    $state->{need_space} = 0;
+  }
+  $state->{atBeg} = 0;
+  @out;
+}
 
 sub Tk::Text::BlockSeparator::insertSelfTeX {
   my ($self, $state) = (shift, shift);
